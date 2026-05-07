@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-3 rounded-2xl bg-emerald-500 text-white font-semibold transition-all active:scale-95 active:shadow-lg hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-3 rounded-2xl bg-slate-200 text-slate-900 font-semibold transition-all active:scale-95 hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .card {
+    @apply rounded-2xl bg-white shadow-md border border-slate-200 p-4 transition-all;
+  }
+
+  .card-hover {
+    @apply hover:shadow-lg hover:border-electric-300;
+  }
+}
