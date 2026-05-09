@@ -352,7 +352,7 @@ export default function CreditsPage() {
                       </span>
                       <span
                         className={`font-semibold ${
-                          sale.paymentStatus === 'paid'
+                          sale.paymentStatus === 'cash'
                             ? 'text-emerald-600'
                             : 'text-red-600'
                         }`}

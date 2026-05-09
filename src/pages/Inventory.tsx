@@ -1,8 +1,29 @@
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, Edit2, Search, X } from 'lucide-react'
-import { db, type InventoryItem } from '../db'
 
 export default function InventoryPage() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 pb-28 md:pb-8">
+      <div className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
+        <div className="p-4 md:p-6">
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Legacy Inventory</h1>
+          <p className="text-slate-600 mt-1">This page has been replaced with Products & Varieties</p>
+        </div>
+      </div>
+
+      <div className="p-4 md:p-6">
+        <div className="card text-center py-12">
+          <p className="text-slate-600 text-lg">Please use the <strong>Products</strong> page instead</p>
+          <p className="text-slate-500 text-sm mt-2">Go to Products → Add Product → Add Variety</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/*
+export default function InventoryPageOld() {
+  /*
   const [items, setItems] = useState<InventoryItem[]>([])
   const [filteredItems, setFilteredItems] = useState<InventoryItem[]>([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -15,83 +36,7 @@ export default function InventoryPage() {
     price: 0,
     minStockLevel: 0,
   })
-
-  useEffect(() => {
-    loadItems()
-    const interval = setInterval(loadItems, 1000)
-    return () => clearInterval(interval)
-  }, [])
-
-  useEffect(() => {
-    const filtered = items.filter(
-      (item) =>
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.category.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-    setFilteredItems(filtered)
-  }, [searchQuery, items])
-
-  const loadItems = async () => {
-    try {
-      const allItems = await db.inventory.toArray()
-      setItems(allItems)
-    } catch (error) {
-      console.error('Error loading items:', error)
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!formData.name || !formData.category) {
-      alert('Name and category are required')
-      return
-    }
-
-    try {
-      if (editingId) {
-        await db.inventory.update(editingId, {
-          ...formData,
-          updatedAt: Date.now(),
-        })
-      } else {
-        await db.inventory.add({
-          ...formData,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        })
-      }
-
-      resetForm()
-      loadItems()
-    } catch (error) {
-      console.error('Error saving item:', error)
-    }
-  }
-
-  const handleEdit = (item: InventoryItem) => {
-    setFormData({
-      name: item.name,
-      category: item.category,
-      quantity: item.quantity,
-      price: item.price,
-      minStockLevel: item.minStockLevel,
-    })
-    setEditingId(item.id || null)
-    setFormOpen(true)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-
-  const handleDelete = async (id: number | undefined) => {
-    if (!id || !confirm('Delete this item?')) return
-
-    try {
-      await db.inventory.delete(id)
-      loadItems()
-    } catch (error) {
-      console.error('Error deleting item:', error)
-    }
-  }
+  */
 
   const resetForm = () => {
     setFormOpen(false)
