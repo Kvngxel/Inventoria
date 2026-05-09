@@ -452,6 +452,7 @@ export default function ProductsPage() {
                       price: parseFloat(e.target.value) || 0,
                     })
                   }
+                  onFocus={(e) => e.target.select()}
                   placeholder="e.g., 2000"
                   className="w-full px-4 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none"
                   min="0"
@@ -473,6 +474,7 @@ export default function ProductsPage() {
                         quantity: parseInt(e.target.value) || 0,
                       })
                     }
+                    onFocus={(e) => e.target.select()}
                     placeholder="0"
                     className="w-full px-4 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none"
                     min="0"
@@ -491,6 +493,7 @@ export default function ProductsPage() {
                         minStockLevel: parseInt(e.target.value) || 0,
                       })
                     }
+                    onFocus={(e) => e.target.select()}
                     placeholder="0"
                     className="w-full px-4 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none"
                     min="0"
