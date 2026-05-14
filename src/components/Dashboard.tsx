@@ -35,9 +35,8 @@ export default function Dashboard() {
   })
   const [loading, setLoading] = useState(true)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
-  const [quickSellForm, setQuickSellForm] = useState<{
-    varietyId: number | null
-    quantity: number
+  const [cart, setCart] = useState<Array<{ varietyId: number; quantity: number; price: number; productName: string; flavorName: string }>>([])
+  const [checkoutForm, setCheckoutForm] = useState<{
     customerId: number | null
     paymentType: 'cash' | 'credit' | 'partial'
     amountPaid: number
@@ -45,6 +44,7 @@ export default function Dashboard() {
   const [showNewCustomer, setShowNewCustomer] = useState(false)
   const [newCustomerName, setNewCustomerName] = useState('')
   const [productOrder, setProductOrder] = useState<number[]>([])
+  const [selectingMoreProducts, setSelectingMoreProducts] = useState(false)
 
   // Load data on mount
   useEffect(() => {
@@ -112,60 +112,114 @@ export default function Dashboard() {
     }
   }
 
-  const handleQuickSell = async () => {
-    if (!quickSellForm || !quickSellForm.varietyId) return
+  const handleAddToCart = (varietyId: number) => {
+    const variety = varieties.find((v) => v.id === varietyId)
+    if (!variety) return
 
-    const variety = varieties.find((v) => v.id === quickSellForm.varietyId)
-    if (!variety || quickSellForm.quantity <= 0 || variety.quantity < quickSellForm.quantity) {
-      alert('Invalid quantity or insufficient stock')
-      return
+    const existingItem = cart.find((item) => item.varietyId === varietyId)
+    if (existingItem) {
+      setCart(
+        cart.map((item) =>
+          item.varietyId === varietyId
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        )
+      )
+    } else {
+      setCart([
+        ...cart,
+        {
+          varietyId,
+          quantity: 1,
+          price: variety.price,
+          productName: variety.productName || '',
+          flavorName: variety.flavorName,
+        },
+      ])
     }
+    setSelectedProduct(null)
+  }
+
+  const handleRemoveFromCart = (varietyId: number) => {
+    setCart(cart.filter((item) => item.varietyId !== varietyId))
+  }
+
+  const handleUpdateCartQuantity = (varietyId: number, quantity: number) => {
+    if (quantity <= 0) {
+      handleRemoveFromCart(varietyId)
+    } else {
+      const variety = varieties.find((v) => v.id === varietyId)
+      if (variety && quantity <= variety.quantity) {
+        setCart(
+          cart.map((item) =>
+            item.varietyId === varietyId ? { ...item, quantity } : item
+          )
+        )
+      }
+    }
+  }
+
+  const handleCheckout = async () => {
+    if (!checkoutForm || cart.length === 0) return
 
     try {
-      const totalPrice = variety.price * quickSellForm.quantity
+      for (const item of cart) {
+        const variety = varieties.find((v) => v.id === item.varietyId)
+        if (!variety || item.quantity <= 0 || variety.quantity < item.quantity) {
+          alert(`Invalid quantity for ${item.productName} - ${item.flavorName}`)
+          return
+        }
 
-      // Update variety quantity
-      await db.varieties.update(quickSellForm.varietyId, {
-        quantity: variety.quantity - quickSellForm.quantity,
-        updatedAt: Date.now(),
-      })
+        const totalPrice = item.price * item.quantity
 
-      // Record sale
-      await db.sales.add({
-        varietyId: quickSellForm.varietyId,
-        customerId: quickSellForm.customerId || undefined,
-        quantity: quickSellForm.quantity,
-        totalPrice,
-        paymentStatus: quickSellForm.paymentType,
-        amountPaid: quickSellForm.amountPaid,
-        timestamp: Date.now(),
-      })
+        // Update variety quantity
+        await db.varieties.update(item.varietyId, {
+          quantity: variety.quantity - item.quantity,
+          updatedAt: Date.now(),
+        })
 
-      // If credit sale, record initial payment if partial
-      if (
-        quickSellForm.paymentType === 'partial' &&
-        quickSellForm.customerId &&
-        quickSellForm.amountPaid > 0
-      ) {
-        const sale = await db.sales.toArray()
-        const lastSale = sale[sale.length - 1]
-        if (lastSale.id) {
-          await db.payments.add({
-            saleId: lastSale.id,
-            customerId: quickSellForm.customerId,
-            amount: quickSellForm.amountPaid,
-            timestamp: Date.now(),
-          })
+        // Record sale
+        await db.sales.add({
+          varietyId: item.varietyId,
+          customerId: checkoutForm.customerId || undefined,
+          quantity: item.quantity,
+          totalPrice,
+          paymentStatus: checkoutForm.paymentType,
+          amountPaid: checkoutForm.amountPaid,
+          timestamp: Date.now(),
+        })
+
+        // If credit sale with partial payment
+        if (
+          checkoutForm.paymentType === 'partial' &&
+          checkoutForm.customerId &&
+          checkoutForm.amountPaid > 0
+        ) {
+          const sale = await db.sales.toArray()
+          const lastSale = sale[sale.length - 1]
+          if (lastSale.id) {
+            await db.payments.add({
+              saleId: lastSale.id,
+              customerId: checkoutForm.customerId,
+              amount: checkoutForm.amountPaid,
+              timestamp: Date.now(),
+            })
+          }
         }
       }
 
-      setQuickSellForm(null)
-      setSelectedProduct(null)
+      setCart([])
+      setCheckoutForm(null)
       loadData()
     } catch (error) {
-      console.error('Error recording sale:', error)
-      alert('Error recording sale')
+      console.error('Error recording sales:', error)
+      alert('Error recording sales')
     }
+  }
+
+  const handleQuickSell = async () => {
+    if (!checkoutForm || cart.length === 0) return
+    await handleCheckout()
   }
 
   const handleCreateCustomer = async () => {
@@ -184,9 +238,12 @@ export default function Dashboard() {
         updatedAt: Date.now(),
       })
 
-      setQuickSellForm((prev) =>
-        prev ? { ...prev, customerId } : null
-      )
+      if (checkoutForm) {
+        setCheckoutForm({
+          ...checkoutForm,
+          customerId,
+        })
+      }
       setNewCustomerName('')
       setShowNewCustomer(false)
       loadData()
@@ -398,14 +455,17 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Product Selection Modal - Select Variety & Customer */}
-      {selectedProduct && !quickSellForm && (
+      {/* Product Selection Modal - Select Variety & Add to Cart */}
+      {selectedProduct && (cart.length === 0 || selectingMoreProducts) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white w-full max-w-md rounded-3xl p-6 max-h-96 overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-slate-900">Select Flavor</h2>
               <button
-                onClick={() => setSelectedProduct(null)}
+                onClick={() => {
+                  setSelectedProduct(null)
+                  setSelectingMoreProducts(false)
+                }}
                 className="p-2 hover:bg-slate-100 rounded-lg"
               >
                 <X size={20} />
@@ -417,13 +477,11 @@ export default function Dashboard() {
                 <button
                   key={variety.id}
                   onClick={() => {
-                    setQuickSellForm({
-                      varietyId: variety.id!,
-                      quantity: 1,
-                      customerId: null,
-                      paymentType: 'cash',
-                      amountPaid: 0,
-                    })
+                    handleAddToCart(variety.id!)
+                    setSelectedProduct(null)
+                    if (selectingMoreProducts) {
+                      setSelectingMoreProducts(false)
+                    }
                   }}
                   className="w-full p-4 text-left border border-slate-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 transition-all"
                 >
@@ -446,16 +504,46 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Quick Sell Form Modal */}
-      {quickSellForm && (
+      {/* Products Grid for Flavor Selection - When cart exists and adding more */}
+      {!selectedProduct && cart.length > 0 && selectingMoreProducts && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 max-h-96 overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg font-bold text-slate-900">Select Product</h2>
+              <button
+                onClick={() => setSelectingMoreProducts(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {sortedProducts.map((product) => (
+                <button
+                  key={product.id}
+                  onClick={() => setSelectedProduct(product)}
+                  className="w-full p-4 text-left border border-slate-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 transition-all"
+                >
+                  <p className="font-semibold text-slate-900">{product.name}</p>
+                  <p className="text-sm text-slate-600 mt-1">{getProductVarieties(product.id!).length} flavors</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cart View - Show items and checkout */}
+      {cart.length > 0 && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white w-full max-w-md rounded-3xl p-6 max-h-full overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-slate-900">Complete Sale</h2>
+              <h2 className="text-xl font-bold text-slate-900">Cart ({cart.length} items)</h2>
               <button
                 onClick={() => {
-                  setQuickSellForm(null)
-                  setSelectedProduct(null)
+                  setCart([])
+                  setCheckoutForm(null)
                 }}
                 className="p-2 hover:bg-slate-100 rounded-lg"
               >
@@ -463,176 +551,218 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                handleQuickSell()
-              }}
-              className="space-y-4"
-            >
-              {/* Product Info Display */}
-              {varieties.find((v) => v.id === quickSellForm.varietyId) && (
+            {/* Cart Items */}
+            <div className="space-y-3 mb-6">
+              {cart.map((item) => (
+                <div key={item.varietyId} className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <p className="font-semibold text-slate-900">{item.productName}</p>
+                      <p className="text-sm text-slate-600">{item.flavorName}</p>
+                      <p className="text-sm font-semibold text-emerald-600 mt-1">₦{item.price.toLocaleString()}</p>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveFromCart(item.varietyId)}
+                      className="p-1 hover:bg-slate-200 rounded-lg"
+                    >
+                      <X size={18} className="text-red-600" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleUpdateCartQuantity(item.varietyId, item.quantity - 1)}
+                      className="px-3 py-1 bg-slate-200 rounded-lg hover:bg-slate-300 transition-colors"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      value={item.quantity}
+                      onChange={(e) => handleUpdateCartQuantity(item.varietyId, parseInt(e.target.value) || 0)}
+                      className="w-12 text-center px-2 py-1 border border-slate-300 rounded-lg"
+                      min="1"
+                    />
+                    <button
+                      onClick={() => handleUpdateCartQuantity(item.varietyId, item.quantity + 1)}
+                      className="px-3 py-1 bg-slate-200 rounded-lg hover:bg-slate-300 transition-colors"
+                    >
+                      +
+                    </button>
+                    <div className="flex-1 text-right">
+                      <p className="font-bold text-slate-900">
+                        ₦{(item.price * item.quantity).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Add More Products Button */}
+            {!selectingMoreProducts && (
+              <button
+                onClick={() => setSelectingMoreProducts(true)}
+                className="w-full mb-4 py-3 border-2 border-emerald-500 text-emerald-600 font-semibold rounded-xl hover:bg-emerald-50 transition-colors"
+              >
+                + Add Another Product
+              </button>
+            )}
+
+            {/* Checkout Section */}
+            {!checkoutForm ? (
+              <button
+                onClick={() =>
+                  setCheckoutForm({
+                    customerId: null,
+                    paymentType: 'cash',
+                    amountPaid: 0,
+                  })
+                }
+                className="w-full py-3 bg-emerald-500 text-white font-semibold rounded-xl hover:bg-emerald-600 transition-colors"
+              >
+                Proceed to Checkout
+              </button>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handleCheckout()
+                }}
+                className="space-y-4"
+              >
+                {/* Cart Summary */}
                 <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
-                  <p className="text-sm font-semibold text-slate-600">
-                    {varieties.find((v) => v.id === quickSellForm.varietyId)?.productName}
-                  </p>
-                  <p className="text-lg font-bold text-slate-900 mt-1">
-                    {varieties.find((v) => v.id === quickSellForm.varietyId)?.flavorName}
-                  </p>
-                  <p className="text-sm text-emerald-700 font-semibold mt-2">
-                    ₦{varieties.find((v) => v.id === quickSellForm.varietyId)?.price.toLocaleString()}
+                  <p className="text-sm text-slate-600">Subtotal</p>
+                  <p className="text-2xl font-bold text-emerald-600 mt-1">
+                    ₦{cart.reduce((sum, item) => sum + item.price * item.quantity, 0).toLocaleString()}
                   </p>
                 </div>
-              )}
 
-              {/* Quantity */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Quantity *</label>
-                <input
-                  type="number"
-                  value={quickSellForm.quantity}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    setQuickSellForm({ ...quickSellForm, quantity: value === '' ? 0 : parseInt(value) || 0 })
-                  }}
-                  onFocus={(e) => {
-                    if (e.target.value === '0') {
-                      e.target.value = ''
-                      e.target.select()
-                    } else {
-                      e.target.select()
-                    }
-                  }}
-                  min="1"
-                  className="w-full px-4 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none"
-                />
-              </div>
+                {/* Customer Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Customer (Optional)</label>
+                  <div className="space-y-2">
+                    <select
+                      value={checkoutForm.customerId || ''}
+                      onChange={(e) => {
+                        if (e.target.value === 'new') {
+                          setShowNewCustomer(true)
+                        } else {
+                          setCheckoutForm({
+                            ...checkoutForm,
+                            customerId: e.target.value ? parseInt(e.target.value) : null,
+                          })
+                          setShowNewCustomer(false)
+                        }
+                      }}
+                      className="w-full px-4 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none"
+                    >
+                      <option value="">Walk-in Customer</option>
+                      {customers.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                      <option value="new">+ Add New Member</option>
+                    </select>
 
-              {/* Customer Selection */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Customer (Optional)</label>
-                <div className="space-y-2">
+                    {showNewCustomer && (
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                        <input
+                          type="text"
+                          placeholder="Member name..."
+                          value={newCustomerName}
+                          onChange={(e) => setNewCustomerName(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none text-sm"
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={handleCreateCustomer}
+                            className="flex-1 px-3 py-2 rounded-lg bg-emerald-100 text-emerald-700 font-semibold text-sm hover:bg-emerald-200 transition-colors"
+                          >
+                            <Plus size={14} className="inline mr-1" />
+                            Create
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowNewCustomer(false)
+                              setNewCustomerName('')
+                            }}
+                            className="flex-1 px-3 py-2 rounded-lg bg-slate-100 text-slate-700 font-semibold text-sm hover:bg-slate-200 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Payment Type */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Payment Type *</label>
                   <select
-                    value={quickSellForm.customerId || ''}
-                    onChange={(e) => {
-                      if (e.target.value === 'new') {
-                        setShowNewCustomer(true)
-                      } else {
-                        setQuickSellForm({
-                          ...quickSellForm,
-                          customerId: e.target.value ? parseInt(e.target.value) : null,
-                        })
-                        setShowNewCustomer(false)
-                      }
-                    }}
+                    value={checkoutForm.paymentType}
+                    onChange={(e) =>
+                      setCheckoutForm({
+                        ...checkoutForm,
+                        paymentType: e.target.value as 'cash' | 'credit' | 'partial',
+                      })
+                    }
                     className="w-full px-4 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none"
                   >
-                    <option value="">Walk-in Customer</option>
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                    <option value="new">+ Add New Member</option>
+                    <option value="cash">Cash</option>
+                    <option value="partial">Partial Payment</option>
+                    <option value="credit">Full Credit</option>
                   </select>
-
-                  {showNewCustomer && (
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                      <input
-                        type="text"
-                        placeholder="Member name..."
-                        value={newCustomerName}
-                        onChange={(e) => setNewCustomerName(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none text-sm"
-                        autoFocus
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={handleCreateCustomer}
-                          className="flex-1 px-3 py-2 rounded-lg bg-emerald-100 text-emerald-700 font-semibold text-sm hover:bg-emerald-200 transition-colors"
-                        >
-                          <Plus size={14} className="inline mr-1" />
-                          Create
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowNewCustomer(false)
-                            setNewCustomerName('')
-                          }}
-                          className="flex-1 px-3 py-2 rounded-lg bg-slate-100 text-slate-700 font-semibold text-sm hover:bg-slate-200 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
-              </div>
 
-              {/* Payment Type */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Payment Type *</label>
-                <select
-                  value={quickSellForm.paymentType}
-                  onChange={(e) =>
-                    setQuickSellForm({
-                      ...quickSellForm,
-                      paymentType: e.target.value as 'cash' | 'credit' | 'partial',
-                    })
-                  }
-                  className="w-full px-4 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none"
-                >
-                  <option value="cash">Cash</option>
-                  <option value="partial">Partial Payment</option>
-                  <option value="credit">Full Credit</option>
-                </select>
-              </div>
+                {/* Amount Paid */}
+                {checkoutForm.paymentType !== 'cash' && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Amount Paid</label>
+                    <input
+                      type="number"
+                      value={checkoutForm.amountPaid}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setCheckoutForm({
+                          ...checkoutForm,
+                          amountPaid: value === '' ? 0 : parseFloat(value) || 0,
+                        })
+                      }}
+                      onFocus={(e) => {
+                        if (e.target.value === '0') {
+                          e.target.value = ''
+                          e.target.select()
+                        } else {
+                          e.target.select()
+                        }
+                      }}
+                      min="0"
+                      className="w-full px-4 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none"
+                    />
+                  </div>
+                )}
 
-              {/* Amount Paid (if partial or credit) */}
-              {quickSellForm.paymentType !== 'cash' && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Amount Paid</label>
-                  <input
-                    type="number"
-                    value={quickSellForm.amountPaid}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      setQuickSellForm({ ...quickSellForm, amountPaid: value === '' ? 0 : parseFloat(value) || 0 })
-                    }}
-                    onFocus={(e) => {
-                      if (e.target.value === '0') {
-                        e.target.value = ''
-                        e.target.select()
-                      } else {
-                        e.target.select()
-                      }
-                    }}
-                    min="0"
-                    className="w-full px-4 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none"
-                  />
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutForm(null)}
+                    className="flex-1 py-3 border-2 border-slate-300 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-colors"
+                  >
+                    Back to Cart
+                  </button>
+                  <button type="submit" className="flex-1 button-primary py-3 rounded-xl font-semibold">
+                    Complete Sale
+                  </button>
                 </div>
-              )}
-
-              {/* Total */}
-              {varieties.find((v) => v.id === quickSellForm.varietyId) && (
-                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
-                  <p className="text-sm text-slate-600">Total Amount</p>
-                  <p className="text-2xl font-bold text-emerald-600 mt-1">
-                    ₦
-                    {(
-                      (varieties.find((v) => v.id === quickSellForm.varietyId)?.price || 0) *
-                      quickSellForm.quantity
-                    ).toLocaleString()}
-                  </p>
-                </div>
-              )}
-
-              <button type="submit" className="w-full button-primary py-3 rounded-xl font-semibold">
-                Complete Sale
-              </button>
-            </form>
+              </form>
+            )}
           </div>
         </div>
       )}
