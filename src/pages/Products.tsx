@@ -13,6 +13,7 @@ export default function ProductsPage() {
   const [productFormOpen, setProductFormOpen] = useState(false)
   const [editingProductId, setEditingProductId] = useState<number | null>(null)
   const [productFormData, setProductFormData] = useState({ name: '', description: '' })
+  const [newVarieties, setNewVarieties] = useState<Array<{ flavorName: string; price: number; quantity: number; minStockLevel: number }>>([])
 
   // Variety form state
   const [varietyFormOpen, setVarietyFormOpen] = useState(false)
@@ -51,6 +52,8 @@ export default function ProductsPage() {
   const handleAddProduct = () => {
     setProductFormData({ name: '', description: '' })
     setEditingProductId(null)
+    // initialize with one empty variety row for quick creation
+    setNewVarieties([{ flavorName: '', price: 0, quantity: 0, minStockLevel: 0 }])
     setProductFormOpen(true)
   }
 
@@ -74,11 +77,28 @@ export default function ProductsPage() {
           updatedAt: Date.now(),
         })
       } else {
-        await db.products.add({
+        // create product then create any varieties provided in the form
+        const productId = await db.products.add({
           ...productFormData,
           createdAt: Date.now(),
           updatedAt: Date.now(),
         })
+
+        if (newVarieties && newVarieties.length > 0) {
+          for (const v of newVarieties) {
+            if (!v.flavorName.trim()) continue
+            await db.varieties.add({
+              flavorName: v.flavorName,
+              price: v.price,
+              quantity: v.quantity,
+              minStockLevel: v.minStockLevel,
+              productId,
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            })
+          }
+        }
+        setNewVarieties([])
       }
       setProductFormOpen(false)
       loadData()
@@ -398,6 +418,89 @@ export default function ProductsPage() {
                   rows={3}
                 />
               </div>
+
+              {/* When creating a new product, allow adding multiple variety rows inline */}
+              {!editingProductId && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-slate-800">Varieties (optional)</h4>
+                  {newVarieties.map((v, idx) => (
+                    <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium">Variety {idx + 1}</p>
+                        <button
+                          type="button"
+                          onClick={() => setNewVarieties(newVarieties.filter((_, i) => i !== idx))}
+                          className="p-1 hover:bg-slate-100 rounded"
+                        >
+                          <Trash2 size={14} className="text-red-600" />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-2">
+                        <input
+                          type="text"
+                          placeholder="Flavor name (e.g., Vanilla)"
+                          value={v.flavorName}
+                          onChange={(e) =>
+                            setNewVarieties(newVarieties.map((row, i) => (i === idx ? { ...row, flavorName: e.target.value } : row)))
+                          }
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300"
+                        />
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <input
+                            type="number"
+                            placeholder="Price"
+                            value={v.price}
+                            onChange={(e) =>
+                              setNewVarieties(newVarieties.map((row, i) => (i === idx ? { ...row, price: parseFloat(e.target.value) || 0 } : row)))
+                            }
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300"
+                            min="0"
+                          />
+                          <input
+                            type="number"
+                            placeholder="Qty"
+                            value={v.quantity}
+                            onChange={(e) =>
+                              setNewVarieties(newVarieties.map((row, i) => (i === idx ? { ...row, quantity: parseInt(e.target.value) || 0 } : row)))
+                            }
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300"
+                            min="0"
+                          />
+                          <input
+                            type="number"
+                            placeholder="Min stock"
+                            value={v.minStockLevel}
+                            onChange={(e) =>
+                              setNewVarieties(newVarieties.map((row, i) => (i === idx ? { ...row, minStockLevel: parseInt(e.target.value) || 0 } : row)))
+                            }
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300"
+                            min="0"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewVarieties([...newVarieties, { flavorName: '', price: 0, quantity: 0, minStockLevel: 0 }])}
+                      className="flex-1 py-2 rounded-xl bg-emerald-100 text-emerald-700 font-medium hover:bg-emerald-200 transition-colors"
+                    >
+                      + Add Variety Row
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewVarieties([{ flavorName: '', price: 0, quantity: 0, minStockLevel: 0 }])}
+                      className="flex-1 py-2 rounded-xl bg-slate-100 text-slate-700 font-medium hover:bg-slate-200 transition-colors"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <button type="submit" className="w-full button-primary py-3 rounded-xl font-medium">
                 {editingProductId ? 'Update Product' : 'Add Product'}
